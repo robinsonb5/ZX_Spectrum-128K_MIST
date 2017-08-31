@@ -231,9 +231,9 @@ wire        nINT;
 wire        nBUSRQ = ~ioctl_download;
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset;
 
-wire        cold_reset =((mod[2:1] == 1) & Fn[11]) | init_reset;
-wire        warm_reset = (mod[2:1] == 2) & Fn[11];
-wire        shdw_reset = (mod[2:1] == 3) & Fn[11] & ~plus3;
+reg        cold_reset;
+reg        warm_reset;
+reg        shdw_reset;
 
 wire        io_wr = ~nIORQ & ~nWR & nM1;
 wire        io_rd = ~nIORQ & ~nRD & nM1;
@@ -295,6 +295,9 @@ always @(posedge clk_sys) begin
 	reg old_F11;
 
 	old_F11 <= Fn[11];
+	cold_reset <= ((mod[2:1] == 1) & Fn[11]) | init_reset;
+	warm_reset <= (mod[2:1] == 2) & Fn[11];
+	shdw_reset <= (mod[2:1] == 3) & Fn[11] & ~plus3;
 
 	if(reset | ~Fn[11] | (m1 & (addr == 'h66))) NMI <= 0;
 	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
