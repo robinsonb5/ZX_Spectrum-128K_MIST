@@ -47,11 +47,6 @@
 --
 -- v2.1: Output Address 0 during non-bus MCycle (fix ZX contention)
 --
--- v2.2: Interrupt acknowledge cycle has been corrected
---       WAIT_n is broken in T80.vhd. Simulate correct WAIT_n locally.
---
--- v2.3: Output last used Address during non-bus MCycle seems more correct.
---
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -91,21 +86,20 @@ end T80pa;
 architecture rtl of T80pa is
 
 	signal IntCycle_n		: std_logic;
-	signal IntCycleD_n	: std_logic_vector(1 downto 0);
 	signal IORQ				: std_logic;
 	signal NoRead			: std_logic;
 	signal Write			: std_logic;
 	signal BUSAK			: std_logic;
 	signal DI_Reg			: std_logic_vector (7 downto 0);	-- Input synchroniser
+	signal Wait_s			: std_logic;
 	signal MCycle			: std_logic_vector(2 downto 0);
 	signal TState			: std_logic_vector(2 downto 0);
 	signal CEN_pol			: std_logic;
 	signal A_int		   : std_logic_vector(15 downto 0);
-	signal A_last		   : std_logic_vector(15 downto 0);
 
 begin
 
-	A <= A_int when NoRead = '0' or Write = '1' else A_last;
+	A <= A_int when NoRead = '0' or Write = '1' else (others => '0');
 
 	BUSAK_n <= BUSAK;
 
@@ -122,7 +116,7 @@ begin
 			Write   => Write,
 			RFSH_n  => RFSH_n,
 			HALT_n  => HALT_n,
-			WAIT_n  => '1',
+			WAIT_n  => Wait_s,
 			INT_n   => INT_n,
 			NMI_n   => NMI_n,
 			RESET_n => RESET_n,
@@ -151,12 +145,12 @@ begin
 				IORQ_n  <= '1';
 				MREQ_n  <= '1';
 				DI_Reg  <= "00000000";
+				Wait_s  <= '1';
 				CEN_pol <= '0';
 			elsif CEN_p = '1' and CEN_pol = '0' then
 				CEN_pol <= '1';
 				if MCycle = "001" then
 					if TState = "010" then
-						IORQ_n <= '1';
 						MREQ_n <= '1';
 						RD_n   <= '1';
 					end if;
@@ -168,25 +162,20 @@ begin
 					end if;
 				end if;
 			elsif CEN_n = '1' and CEN_pol = '1' then
-				if TState = "010" then
-					CEN_pol <= not WAIT_n;
-				else
-					CEN_pol <= '0';
-				end if;
+				CEN_pol <= '0';
+				Wait_s <= WAIT_n;
 				if TState = "011" and BUSAK = '1' then
 					DI_Reg <= DI;
 				end if;
 				if MCycle = "001" then
 					if TState = "001" then
-						IntCycleD_n <= IntCycleD_n(0) & IntCycle_n;
 						RD_n   <= not IntCycle_n;
 						MREQ_n <= not IntCycle_n;
-						IORQ_n <= IntCycleD_n(1);
-						A_last <= A_int;
+						IORQ_n <= IntCycle_n;
 					end if;
 					if TState = "011" then
-						IntCycleD_n <= "11";
 						RD_n   <= '1';
+						IORQ_n <= '1';
 						MREQ_n <= '0';
 					end if;
 					if TState = "100" then
@@ -197,11 +186,10 @@ begin
 						if TState = "001" then
 							RD_n   <= Write;
 							MREQ_n <= '0';
-							A_last <= A_int;
 						end if;
-					end if;
-					if TState = "010" then
-						WR_n   <= not Write;
+						if TState = "010" then
+							WR_n   <= not Write;
+						end if;
 					end if;
 					if TState = "011" then
 						WR_n   <= '1';
