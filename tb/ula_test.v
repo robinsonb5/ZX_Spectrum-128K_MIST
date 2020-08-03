@@ -49,8 +49,26 @@ wire  [7:0] cpu_dout;
 wire        nMREQ;
 wire        nIORQ;
 wire        nRFSH;
+wire        nRD;
 wire        nWR;
 wire        nINT;
+
+CPU CPU (
+	.reset(reset),
+	.clk_sys(clk_sys),
+	.ce_n(ce_cpu_sn),
+	.ce_p(ce_cpu_sp),
+	.cpu_addr(cpu_addr),
+	.cpu_din(cpu_din),
+	.cpu_dout(cpu_dout),
+	.nMREQ(nMREQ),
+	.nIORQ(nIORQ),
+	.nINT(nINT),
+	.nRD(nRD),
+	.nWR(nWR),
+	.nM1(),
+	.nRFSH()
+);
 
 ULA ULA (
 	.reset(reset),

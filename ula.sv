@@ -31,8 +31,8 @@ module ULA
 	input         clk_sys,	// master clock
 	input         ce_7mp,
 	input         ce_7mn,
-	output reg    ce_cpu_sp,
-	output reg    ce_cpu_sn,
+	output        ce_cpu_sp,
+	output        ce_cpu_sn,
 
 	// CPU interfacing
 	input  [15:0] addr,
@@ -80,28 +80,48 @@ assign nINT      = ~INT;
 assign port_ff   = tmx_using_ff ? {2'b00, tmx_cfg} : mZX ? ff_data : 8'hFF;
 
 // Pixel clock
-reg [8:0] hc = 0;
-reg [8:0] vc = 0;
+reg  [8:0] hc = 0;
+reg  [8:0] vc_next;
+reg  [8:0] vc = 0;
+reg  [8:0] hc_next;
+
+wire       Border_next = ((vc_next[7] & vc_next[6]) | vc_next[8] | hc_next[8]);
+reg        Border;
+reg  [4:0] FlashCnt_next;
+reg  [4:0] FlashCnt;
+
+always @(*) begin
+	vc_next = vc;
+	FlashCnt_next = FlashCnt;
+
+	if (hc==((mZX && m128) ? 455 : 447)) begin
+		hc_next = 0;
+		if (vc == (!mZX ? 319 : m128 ? 310 : 311)) begin
+			vc_next = 0;
+			FlashCnt_next = FlashCnt + 1'd1;
+		end else begin
+			vc_next = vc + 1'd1;
+		end
+	end else begin
+		hc_next = hc + 1'd1;
+	end
+end
 
 always @(posedge clk_sys) begin
 	reg m512;
 
 	if(ce_7mp) begin
+		vc <= vc_next;
+		hc <= hc_next;
+		Border <= Border_next;
+		FlashCnt <= FlashCnt_next;
+
 		if((vc<192) || (hc<256)) m512 <= (m512 | tmx_hi);
-		if (hc==((mZX && m128) ? 455 : 447)) begin
-			hc <= 0;
-			if (vc == (!mZX ? 319 : m128 ? 310 : 311)) begin 
-				vc <= 0;
-				FlashCnt <= FlashCnt + 1'd1;
-			end else begin
-				vc <= vc + 1'd1;
-			end
+		if (hc_next == 0) begin
 			if(mZX ? (vc == 240) : (vc == 248)) begin
 				mode512 <= m512;
 				m512 <= 0;
 			end
-		end else begin
-			hc <= hc + 1'd1;
 		end
 		hiSRegister <= {hiSRegister[14:0],1'b0};
 	end
@@ -186,9 +206,7 @@ reg [15:0] hiSRegister;
 reg [14:0] vaddr;
 
 reg  [7:0] AttrOut;
-reg  [4:0] FlashCnt;
 
-wire       Border = ((vc[7] & vc[6]) | vc[8] | hc[8]);
 reg        VidEN = 0;
 
 reg  [7:0] bits;
@@ -216,26 +234,39 @@ reg  ioreqtw3;
 reg  mreqt23;
 
 wire ioreq_n    = (addr[0] & ~ulap_acc) | nIORQ;
-wire ulaContend = (hc[2] | hc[3]) & ~Border & CPUClk & ioreqtw3;
+wire ulaContend = (hc_next[2] | hc_next[3]) & ~Border_next & CPUClk & ioreqtw3;
 wire memContend = ioreq_n & mreqt23 & ((addr[15:14] == 2'b01) | (m128 & (addr[15:14] == 2'b11) & page_ram[0]));
 wire ioContend  = ~ioreq_n;
-wire next_clk   = ~hc[0] | (mZX & ulaContend & (memContend | ioContend));
+wire next_clk   = hc_next[0] | (mZX & ulaContend & (memContend | ioContend));
+
+assign ce_cpu_sp = ce_7mp & (~CPUClk &  next_clk);
+assign ce_cpu_sn = ce_7mp & ( CPUClk & ~next_clk);
 
 always @(posedge clk_sys) begin
-	ce_cpu_sp <= 0;
-	ce_cpu_sn <= 0;
 	if(ce_7mp) begin
 		CPUClk <= next_clk;
 
-		if(~CPUClk &  next_clk) ce_cpu_sp <= 1;
-		if( CPUClk & ~next_clk) ce_cpu_sn <= 1;
-
-		if(~CPUClk &  next_clk) begin
+		if(next_clk) begin
 			ioreqtw3 <= ioreq_n;
 			mreqt23  <= nMREQ;
 		end
 	end
 end
+
+
+`ifdef VERILATOR
+/* verilator lint_off UNOPTFLAT */
+reg  mreqt23_a, ioreqtw3_a;
+always @(*) if (cpuclk_a) {mreqt23_a, ioreqtw3_a} = {~nMREQ, ~ioreq_n};
+
+wire clkwait_n = ~(hc[3] | hc[2]);
+wire ioreqtw3_a = cpuclk_a ? ~ioreq_n : ioreqtw3_a;
+wire contend_common_disable = Border | ioreqtw3_a | ~cpuclk_a;
+wire contend_mem = ~(~(addr[14] | ~ioreq_n) | ~(~addr[15] | ~ioreq_n) | clkwait_n | mreqt23_a | contend_common_disable);
+wire contend_io = ~(clkwait_n | ioreq_n | contend_common_disable);
+wire cpuclk_a = hc[0] | contend_mem | contend_io;
+/* verilator lint_on UNOPTFLAT */
+`endif
 
 /////////////////  ULA+, Timex  ///////////////////
 

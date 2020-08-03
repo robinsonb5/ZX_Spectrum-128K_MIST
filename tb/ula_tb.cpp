@@ -52,12 +52,13 @@ int main(int argc, char **argv) {
 	trace->open("ula.vcd");
 
 	tb->reset = 1;
+	tb->mZX = 1;
 	tick(1);
 	tick(0);
 	tick(1);
 	tick(0);
 
-	tb->reset = 1;
+	tb->reset = 0;
 
 	FILE *file=fopen("video.rgb", "wb");
 	unsigned short rgb;
