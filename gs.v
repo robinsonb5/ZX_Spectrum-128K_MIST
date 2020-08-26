@@ -95,7 +95,7 @@ module gs
 parameter INT_DIV = 291;
 
 // port #xxBB : #xxB3
-assign DO = A ? {bit7, 6'b111111, bit0} : port_03;
+assign DO = A ? {flag_data, 6'b111111, flag_cmd} : port_03;
 
 // CPU
 reg         int_n;
@@ -147,22 +147,22 @@ always @(posedge CLK) begin
 end
 
 
-reg bit7;
-reg bit0;
+reg flag_data;
+reg flag_cmd;
 always @(posedge CLK) begin
 	if (~cpu_iorq_n & cpu_m1_n) begin
 		case(cpu_a_bus[3:0])
-			'h2: bit7 <= 0;
-			'h3: bit7 <= 1;
-			'h5: bit0 <= 0;
-			'hA: bit7 <= ~port_00[0];
-			'hB: bit0 <=  port_09[5];
+			'h2: flag_data <= 0;
+			'h3: flag_data <= 1;
+			'h5: flag_cmd <= 0;
+			'hA: flag_data <= ~port_00[0];
+			'hB: flag_cmd <= port_09[5];
 		endcase
 	end
-	else if (~CS_n) begin
-		if (~A & ~RD_n) bit7 <= 0;
-		if (~A & ~WR_n) bit7 <= 1;
-		if ( A & ~WR_n) bit0 <= 1;
+	if (~CS_n) begin
+		if (~A & ~RD_n) flag_data <= 0;
+		if (~A & ~WR_n) flag_data <= 1;
+		if ( A & ~WR_n) flag_cmd <= 1;
 	end
 end
 
@@ -217,7 +217,7 @@ wire [7:0] cpu_di_bus =
 	mem_rd                                            ? MEM_DO  :
 	(~cpu_iorq_n && ~cpu_rd_n && cpu_a_bus[3:0] == 1) ? port_BB :
 	(~cpu_iorq_n && ~cpu_rd_n && cpu_a_bus[3:0] == 2) ? port_B3 :
-	(~cpu_iorq_n && ~cpu_rd_n && cpu_a_bus[3:0] == 4) ? {bit7, 6'b111111, bit0} :
+	(~cpu_iorq_n && ~cpu_rd_n && cpu_a_bus[3:0] == 4) ? {flag_data, 6'b111111, flag_cmd} :
 	8'hFF;
 
 wire mem_wr = ~cpu_wr_n & ~cpu_mreq_n & |page_addr;
