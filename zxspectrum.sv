@@ -604,13 +604,12 @@ end
 
 
 ////////////////////   AUDIO   ///////////////////
-wire [7:0] sound_data;
-wire [7:0] psg_ch_a;
-wire [7:0] psg_ch_b;
-wire [7:0] psg_ch_c;
-wire       psg_enable = addr[0] & addr[15] & ~addr[1];
-wire       psg_we     = psg_enable & ~nIORQ & ~nWR & nM1;
-reg        psg_reset;
+wire  [7:0] sound_data;
+wire [10:0] psg_left;
+wire [10:0] psg_right;
+wire        psg_enable = addr[0] & addr[15] & ~addr[1];
+wire        psg_we     = psg_enable & ~nIORQ & ~nWR & nM1;
+reg         psg_reset;
 
 // Turbosound card (Dual AY/YM chips)
 turbosound turbosound
@@ -622,11 +621,8 @@ turbosound turbosound
 	.BC(addr[14]),
 	.DI(cpu_dout),
 	.DO(sound_data),
-	.CHANNEL_A(psg_ch_a),
-	.CHANNEL_B(psg_ch_b),
-	.CHANNEL_C(psg_ch_c),
-	.SEL(0),
-	.MODE(0),
+	.AUDIO_L(psg_left),
+	.AUDIO_R(psg_right),
 
 	.IOA_in(0),
 	.IOB_in(0)
@@ -689,7 +685,7 @@ sigma_delta_dac #(14) dac_l
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({~gs_l[14], gs_l[13:0]} + {2'b00, psg_ch_a, 5'd0} + {3'b000, psg_ch_b, 4'd0} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
+	.DACin({~gs_l[14], gs_l[13:0]} + {1'b0, psg_left, 3'b000} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
 	.DACout(AUDIO_L)
 );
 
@@ -697,7 +693,7 @@ sigma_delta_dac #(14) dac_r
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({~gs_r[14], gs_r[13:0]} + {2'b00, psg_ch_c, 5'd0} + {3'b000, psg_ch_b, 4'd0} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
+	.DACin({~gs_r[14], gs_r[13:0]} + {1'b0, psg_right, 3'b000} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
 	.DACout(AUDIO_R)
 );
 
