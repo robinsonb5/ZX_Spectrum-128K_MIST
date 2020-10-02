@@ -128,6 +128,17 @@ T80pa cpu
 
 wire CE = CE_P;
 
+reg WR_n_d;
+reg RD_n_d;
+
+wire RD = RD_n_d & ~RD_n;
+wire WR = WR_n_d & ~WR_n;
+
+always @(posedge CLK) begin
+	RD_n_d <= RD_n;
+	WR_n_d <= WR_n;
+end
+
 // INT#
 always @(posedge CLK) begin
 	reg [9:0] cnt;
@@ -160,9 +171,9 @@ always @(posedge CLK) begin
 		endcase
 	end
 	if (~CS_n) begin
-		if (~A & ~RD_n) flag_data <= 0;
-		if (~A & ~WR_n) flag_data <= 1;
-		if ( A & ~WR_n) flag_cmd <= 1;
+		if (~A & RD) flag_data <= 0;
+		if (~A & WR) flag_data <= 1;
+		if ( A & WR) flag_cmd <= 1;
 	end
 end
 
@@ -174,7 +185,7 @@ always @(posedge CLK) begin
 		port_BB <= 0;
 		port_B3 <= 0;
 	end
-	else if (~CS_n && ~WR_n) begin
+	else if (~CS_n && WR) begin
 		if(A) port_BB <= DI;
 		else  port_B3 <= DI;
 	end
