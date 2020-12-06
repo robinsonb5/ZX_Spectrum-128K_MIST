@@ -64,16 +64,28 @@ assign LED = ~(ioctl_download | tape_led);
 localparam CONF_BDI   = "(BDI)";
 localparam CONF_PLUSD = "(+D) ";
 
+localparam ROM_ADDR  = 25'h150000; // boot rom
+localparam TAPE_ADDR = 25'h400000; // tape buffer at 4MB
+localparam SNAP_ADDR = 25'h600000; // snapshot buffer at 6MB
+
+localparam ARCH_ZX48  = 5'b011_00; // ZX 48
+localparam ARCH_ZX128 = 5'b000_01; // ZX 128/+2
+localparam ARCH_ZX3   = 5'b100_01; // ZX 128 +3
+localparam ARCH_P48   = 5'b011_10; // Pentagon 48
+localparam ARCH_P128  = 5'b000_10; // Pentagon 128
+localparam ARCH_P1024 = 5'b001_10; // Pentagon 1024
+
 `include "build_id.v"
 localparam CONF_STR = {
 	"SPECTRUM;;",
 	"S1,TRDIMGDSKMGT,Load Disk;",
 	"F,TAPCSWTZX,Load Tape;",
+	"F,Z80,Load Snapshot;",
+	"O89,Video timings,ULA-48,ULA-128,Pentagon;",
+	"OAC,Memory,Standard 128K,Pentagon 1024K,Profi 1024K,Standard 48K,+2A/+3;",
 	"O6,Fast tape load,On,Off;",
 	"O7,Joystick swap,Off,On;",
-	"O89,Video timings,ULA-48,ULA-128,Pentagon;",
 	"OFG,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
-	"OAC,Memory,Standard 128K,Pentagon 1024K,Profi 1024K,Standard 48K,+2A/+3;",
 	"ODE,Features,ULA+ & Timex,ULA+,Timex,None;",
 	"OHI,MMC Card,Off,divMMC,ZXMMC;",
 	"OKL,General Sound,512KB,1MB,2MB,Disabled;",
@@ -81,6 +93,13 @@ localparam CONF_STR = {
 	"V,v3.40.",`BUILD_DATE
 };
 
+wire [1:0] st_ula_type    = status[9:8];
+wire [2:0] st_memory_mode = status[12:10];
+wire       st_fast_tape   = status[6];
+wire       st_joyswap     = status[7];
+wire [1:0] st_scanlines   = status[16:15];
+wire [1:0] st_mmc         = status[18:17];
+wire [1:0] st_gs_memory   = status[21:20];
 
 ////////////////////   CLOCKS   ///////////////////
 wire clk_sys;
@@ -145,7 +164,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-wire [4:0] turbo_req = (tape_active & ~status[6]) ? 5'b00001 : turbo_key;
+wire [4:0] turbo_req = (tape_active & ~st_fast_tape) ? 5'b00001 : turbo_key;
 always @(posedge clk_sys) begin
 	reg [1:0] timeout;
 
@@ -172,8 +191,8 @@ wire [24:0] ps2_mouse;
 
 wire  [7:0] joystick_0;
 wire  [7:0] joystick_1;
-wire  [7:0] joy0 = status[7] ? joystick_1 : joystick_0; // Kempston
-wire  [7:0] joy1 = status[7] ? joystick_0 : joystick_1; // Sinclair
+wire  [7:0] joy0 = st_joyswap ? joystick_1 : joystick_0; // Kempston
+wire  [7:0] joy1 = st_joyswap ? joystick_0 : joystick_1; // Sinclair
 
 wire  [1:0] buttons;
 wire  [1:0] switches;
@@ -283,7 +302,9 @@ T80pa cpu
 	.A(addr),
 	.DO(cpu_dout),
 	.DI(cpu_din),
-	.REG(cpu_reg)
+	.REG(cpu_reg),
+	.DIR(snap_REG),
+	.DIRSet(snap_REGSet)
 );
 
 always_comb begin
@@ -304,8 +325,9 @@ always_comb begin
 end
 
 reg init_reset = 1;
+reg old_download;
+
 always @(posedge clk_sys) begin
-	reg old_download;
 	old_download <= ioctl_download;
 	if(old_download & ~ioctl_download) init_reset <= 0;
 end
@@ -324,7 +346,7 @@ always @(posedge clk_sys) begin
 
 	old_F11 <= Fn[11];
 
-	reset <= buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset | Fn[10];
+	reset <= buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset | snap_reset | Fn[10];
 
 	if(reset | ~Fn[11]) NMI <= 0;
 	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
@@ -342,7 +364,7 @@ end
 
 //////////////////   MEMORY   //////////////////
 wire        dma = (reset | ~nBUSACK) & ~nBUSRQ;
-reg  [20:0] ram_addr;
+reg  [23:0] ram_addr;
 reg   [7:0] ram_din;
 reg         ram_we;
 reg         ram_rd;
@@ -350,33 +372,37 @@ wire  [7:0] ram_dout;
 wire        ram_ready;
 
 always_comb begin
-	casex({page_special, addr[15:14]})
-		'b0_00: ram_addr = { 3'b101, page_rom, addr[13:0] }; //ROM
-		'b0_01: ram_addr = {   4'd0, 3'd5,     addr[13:0] }; //Non-special page modes
-		'b0_10: ram_addr = {   4'd0, 3'd2,     addr[13:0] };
-		'b0_11: ram_addr = {   1'b0, page_ram, addr[13:0] };
-		'b1_00: ram_addr = {   4'd0,                       |page_reg_plus3[2:1], 2'b00, addr[13:0] }; //Special page modes
-		'b1_01: ram_addr = {   4'd0, |page_reg_plus3[2:1], &page_reg_plus3[2:1],  1'b1, addr[13:0] };
-		'b1_10: ram_addr = {   4'd0,                       |page_reg_plus3[2:1], 2'b10, addr[13:0] };
-		'b1_11: ram_addr = {   4'd0,     ~page_reg_plus3[2] & page_reg_plus3[1], 2'b11, addr[13:0] };
+	casex({snap_dl | snap_reset, page_special, addr[15:14]})
+		'b1_X_XX: ram_addr = snap_rd ? (SNAP_ADDR + snap_dl_addr) : snap_addr;
+		'b0_0_00: ram_addr = { 3'b101, page_rom, addr[13:0] }; //ROM
+		'b0_0_01: ram_addr = {   4'd0, 3'd5,     addr[13:0] }; //Non-special page modes
+		'b0_0_10: ram_addr = {   4'd0, 3'd2,     addr[13:0] };
+		'b0_0_11: ram_addr = {   1'b0, page_ram, addr[13:0] };
+		'b0_1_00: ram_addr = {   4'd0,                       |page_reg_plus3[2:1], 2'b00, addr[13:0] }; //Special page modes
+		'b0_1_01: ram_addr = {   4'd0, |page_reg_plus3[2:1], &page_reg_plus3[2:1],  1'b1, addr[13:0] };
+		'b0_1_10: ram_addr = {   4'd0,                       |page_reg_plus3[2:1], 2'b10, addr[13:0] };
+		'b0_1_11: ram_addr = {   4'd0,     ~page_reg_plus3[2] & page_reg_plus3[1], 2'b11, addr[13:0] };
 	endcase
 
-	casex({dma, tape_req})
-		'b1X: ram_din <= ioctl_dout;
-		'b01: ram_din <= 0;
-		'b00: ram_din <= cpu_dout;
+	casex({snap_dl | snap_reset, dma, tape_req})
+		'b1XX: ram_din = snap_data;
+		'b01X: ram_din = ioctl_dout;
+		'b001: ram_din = 0;
+		'b000: ram_din = cpu_dout;
 	endcase
 
-	casex({dma, tape_req})
-		'b1X: ram_rd = 0;
-		'b01: ram_rd = ~nMREQ;
-		'b00: ram_rd = ~nMREQ & ~nRD;
+	casex({snap_dl | snap_reset, dma, tape_req})
+		'b1XX: ram_rd = snap_rd;
+		'b01X: ram_rd = 0;
+		'b001: ram_rd = ~nMREQ;
+		'b000: ram_rd = ~nMREQ & ~nRD;
 	endcase
 
-	casex({dma, tape_req})
-		'b1X: ram_we = ioctl_wr;
-		'b01: ram_we = 0;
-		'b00: ram_we = (page_special | addr[15] | addr[14] | ((plusd_mem | mf128_mem) & addr[13])) & ~nMREQ & ~nWR;
+	casex({snap_dl | snap_reset, dma, tape_req})
+		'b1XX: ram_we = snap_wr;
+		'b01X: ram_we = ioctl_wr;
+		'b001: ram_we = 0;
+		'b000: ram_we = (page_special | addr[15] | addr[14] | ((plusd_mem | mf128_mem) & addr[13])) & ~nMREQ & ~nWR;
 	endcase
 end
 
@@ -435,8 +461,8 @@ always @(posedge clk_sys) begin
 		sdram_din <= ram_din;
 
 		casex({dma, tape_req})
-			'b1X: sdram_addr <= ioctl_addr;
-			'b01: sdram_addr <= tape_addr;
+			'b1X: sdram_addr <= ioctl_addr + (ioctl_index == 0 ? ROM_ADDR : ioctl_index[5:0] == 2 ? TAPE_ADDR : SNAP_ADDR);
+			'b01: sdram_addr <= tape_addr + TAPE_ADDR;
 			'b00: sdram_addr <= ram_addr;
 		endcase;
 
@@ -457,7 +483,7 @@ reg   [7:0] gs_mem_mask;
 
 always_comb begin
 	gs_mem_mask = 0;
-	case(status[21:20])
+	case(st_gs_memory)
 		0: if(gs_mem_addr[20:19]) gs_mem_mask = 8'hFF; // 512K
 		1: if(gs_mem_addr[20])    gs_mem_mask = 8'hFF; // 1024K
 		2,3:                      gs_mem_mask = 0;
@@ -497,6 +523,7 @@ assign gs_mem_ready = (gs_sdram_ack == gs_sdram_req) & ~new_gs_mem_req;
 
 // VRAM
 wire vram_sel = (ram_addr[20:16] == 1) & ram_addr[14] & ~dma & ~tape_req;
+
 vram vram
 (
     .clock(clk_sys),
@@ -531,6 +558,27 @@ reg  [2:0] page_128k;
 reg  [3:0] page_rom;
 wire       active_48_rom = zx48 | (page_reg[4] & ~plus3) | (plus3 & page_reg[4] & page_reg_plus3[2] & ~page_special);
 
+reg  [1:0] ula_type;
+reg  [2:0] memory_mode;
+
+always @(posedge clk_sys) begin
+	reg [1:0] st_ula_type_old;
+	reg [2:0] st_memory_mode_old;
+
+	st_ula_type_old <= st_ula_type;
+	st_memory_mode_old <= st_memory_mode;
+
+	if(reset) begin
+		ula_type <= st_ula_type;
+		memory_mode <= st_memory_mode;
+	end else begin
+		if (st_ula_type_old != st_ula_type) ula_type <= st_ula_type;
+		if (st_memory_mode_old != st_memory_mode) memory_mode <= st_memory_mode;
+	end
+
+	if(snap_hwset) {memory_mode, ula_type} <= snap_hw;
+end
+
 always_comb begin
 	casex({shadow_rom, trdos_en, plusd_mem, mf128_mem, plus3})
 		'b1XXXX: page_rom <= 4'b0100; //shadow
@@ -563,11 +611,14 @@ always @(posedge clk_sys) begin
 			pf1024 <= 0;
 			zx48   <= ~plus3;
 		end else begin
-			p1024 <= (status[12:10] == 1);
-			pf1024<= (status[12:10] == 2);
-			zx48  <= (status[12:10] == 3);
-			plus3 <= (status[12:10] == 4);
+			p1024 <= (memory_mode == 1);
+			pf1024<= (memory_mode == 2);
+			zx48  <= (memory_mode == 3);
+			plus3 <= (memory_mode == 4);
 		end
+	end else if(snap_REGSet) begin
+		if((snap_hw == ARCH_ZX128) || (snap_hw == ARCH_P128) || (snap_hw == ARCH_ZX3)) page_reg <= snap_7ffd;
+		if(snap_hw == ARCH_ZX3) page_reg_plus3 <= snap_1ffd;
 	end else begin
 		if(m1 && ~old_m1 && addr[15:14]) shadow_rom <= 0;
 		if(m1 && ~old_m1 && ~plusd_en && ~mod[0] && (addr == 'h66) && ~plus3) shadow_rom <= 1; 
@@ -600,6 +651,7 @@ always @(posedge clk_sys) begin
 		ear_out <= cpu_dout[4]; 
 		mic_out <= cpu_dout[3];
 	end
+	if(snap_REGSet) border_color <= snap_border;
 end
 
 
@@ -628,9 +680,10 @@ turbosound turbosound
 	.IOB_in(0)
 );
 
+// General Sound
 wire  [7:0] gs_dout;
 wire [14:0] gs_l, gs_r;
-wire gs_sel = (addr[7:0] ==? 'b1011?011) & ~&status[21:20];
+wire gs_sel = (addr[7:0] ==? 'b1011?011) & ~&st_gs_memory;
 
 reg [3:0] gs_ce_count;
 
@@ -655,7 +708,6 @@ end
 wire gs_ce_p = gs_ce_count == 0;
 wire gs_ce_n = gs_ce_count == 4;
 
-// General Sound
 gs #(.INT_DIV(373)) gs
 (
 	.RESET(reset),
@@ -681,6 +733,7 @@ gs #(.INT_DIV(373)) gs
 	.OUTR(gs_r)
 );
 
+// Final audio signal mixing
 sigma_delta_dac #(14) dac_l
 (
 	.CLK(clk_sys),
@@ -709,14 +762,14 @@ wire  [7:0] ulap_dout;
 
 reg mZX, m128;
 always_comb begin
-	case(status[9:8])
+	case(ula_type)
 		      0: {mZX, m128} <= 2'b10;
 		      1: {mZX, m128} <= 2'b11;
 		default: {mZX, m128} <= 2'b00;
 	endcase
 end
 
-wire [1:0] scale = status[16:15];
+wire [1:0] scale = st_scanlines;
 wire [2:0] Rx, Gx, Bx;
 wire       HSync, VSync, HBlank;
 wire       ulap_ena, ulap_mono, mode512;
@@ -797,7 +850,7 @@ divmmc divmmc
 (
     .*,
     .enable(1),
-    .mode(status[18:17]), //00-off, 01-divmmc, 10-zxmmc
+    .mode(st_mmc), //00-off, 01-divmmc, 10-zxmmc
     .din(cpu_dout),
     .dout(mmc_dout),
     .active_io(mmc_sel)
@@ -960,8 +1013,7 @@ u765 #(20'd1800,1) u765
 );
 
 ///////////////////   TAPE   ///////////////////
-wire [24:0] tape_addr = 25'h400000 + tape_addr_raw;
-wire [24:0] tape_addr_raw;
+wire [24:0] tape_addr;
 wire        tape_req;
 wire        tape_dout_en;
 wire        tape_turbo;
@@ -991,11 +1043,11 @@ smart_tape tape
 
 	.buff_rd_en(~nRFSH),
 	.buff_rd(tape_req),
-	.buff_addr(tape_addr_raw),
+	.buff_addr(tape_addr),
 	.buff_din(ram_dout),
 
 	.ioctl_download(ioctl_download & (ioctl_index[4:0] == 2)),
-	.tape_size(ioctl_addr - 25'h400000 + 1'b1),
+	.tape_size(ioctl_addr + 1'b1),
 	.tape_mode(ioctl_index[7:6]),
 
 	.m1(~nM1 & ~nMREQ),
@@ -1023,5 +1075,94 @@ end
 assign UART_TX = 1;
 assign tape_in = tape_loaded_reg ? tape_vin : ~UART_RX;
 
+//////////////////  SNAPSHOT  //////////////////
+reg          snap_dl = 0;
+reg   [24:0] snap_dl_addr;
+wire   [7:0] snap_dl_data;
+wire         snap_dl_wr;
+wire         snap_dl_wait;
+reg          snap_rd = 0;
+reg          snap_rd_old;
+reg          snap_rd_state;
+
+always @(posedge clk_sys) begin
+	snap_rd_old <= snap_rd;
+
+	if (ioctl_index[4:0] == 3 && old_download && ~ioctl_download) begin
+		snap_dl <= 1;
+		snap_dl_addr <= 0;
+		snap_rd_state <= 0;
+		snap_dl_wr <= 0;
+	end
+
+	snap_dl_wr <= 0;
+	if (snap_dl) begin
+		case (snap_rd_state)
+		0: // read RAM
+		begin
+			if (snap_dl_wr) snap_dl_addr <= snap_dl_addr + 1'd1;
+			if (ram_ready & ~snap_wr & ~snap_dl_wr & ~snap_dl_wait) begin
+				if (~snap_rd | ~snap_rd_old)
+					snap_rd <= 1;
+				else begin
+					snap_rd <= 0;
+					snap_rd_state <= 1;
+				end
+			end
+		end
+		1: // write to snapshot handler module
+		begin
+			snap_dl_wr <= 1;
+			snap_dl_data <= ram_dout;
+			snap_rd_state <= 0;
+			if (snap_dl_addr == ioctl_addr)
+				snap_dl <= 0;
+		end
+		default :;
+		endcase
+	end
+end
+
+wire [211:0] snap_REG;
+wire         snap_REGSet;
+wire  [24:0] snap_addr;
+wire   [7:0] snap_data;
+wire         snap_wr;
+wire         snap_reset;
+wire         snap_hwset;
+wire   [4:0] snap_hw;
+wire  [31:0] snap_status;
+wire   [2:0] snap_border;
+wire   [7:0] snap_1ffd;
+wire   [7:0] snap_7ffd;
+
+snap_loader #(ARCH_ZX48, ARCH_ZX128, ARCH_ZX3, ARCH_P128) snap_loader
+(
+	.clk_sys(clk_sys),
+
+	.ioctl_download(snap_dl),
+	.ioctl_addr(snap_dl_addr),
+	.ioctl_data(snap_dl_data),
+	.ioctl_wr(snap_dl_wr),
+	.ioctl_wait(snap_dl_wait),
+
+	.ram_ready(ram_ready),
+
+	.REG(snap_REG),
+	.REGSet(snap_REGSet),
+
+	.addr(snap_addr),
+	.dout(snap_data),
+	.wr(snap_wr),
+
+	.reset(snap_reset),
+	.hwset(snap_hwset),
+	.hw(snap_hw),
+	.hw_ack({memory_mode, ula_type}),
+
+	.border(snap_border),
+	.reg_1ffd(snap_1ffd),
+	.reg_7ffd(snap_7ffd)
+);
 
 endmodule
