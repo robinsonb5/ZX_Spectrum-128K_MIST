@@ -516,7 +516,7 @@ always @(posedge clk_sys) begin
 			gs_sdram_we <= gs_rom_we | gs_mem_wr;
 			gs_sdram_din <= gs_rom_we ? ioctl_dout : gs_mem_din;
 		end
-		gs_sdram_addr <= gs_rom_we ? (ioctl_addr - 24'h180000) : gs_mem_addr;
+		gs_sdram_addr <= gs_rom_we ? (ioctl_addr - 24'h30000) : gs_mem_addr;
 	end
 end
 
