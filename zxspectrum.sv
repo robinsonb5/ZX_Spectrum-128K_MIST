@@ -80,7 +80,7 @@ localparam CONF_STR = {
 	"SPECTRUM;;",
 	"S1,TRDIMGDSKMGT,Load Disk;",
 	"F,TAPCSWTZX,Load Tape;",
-	"F,Z80,Load Snapshot;",
+	"F,Z80SNA,Load Snapshot;",
 	"O89,Video timings,ULA-48,ULA-128,Pentagon;",
 	"OAC,Memory,Standard 128K,Pentagon 1024K,Profi 1024K,Standard 48K,+2A/+3;",
 	"O6,Fast tape load,On,Off;",
@@ -236,12 +236,14 @@ wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_download;
-wire  [7:0] ioctl_index;
+wire  [5:0] ioctl_index;
+wire  [1:0] ioctl_ext_index;
 
 mist_io #(.STRLEN(($size(CONF_STR)>>3)+5)) mist_io
 (
 	.*,
 	.ioctl_ce(1),
+	.ioctl_index({ioctl_ext_index, ioctl_index}),
 	.conf_str({CONF_STR, plusd_en ? CONF_PLUSD : CONF_BDI}),
 
 	// unused
@@ -461,7 +463,7 @@ always @(posedge clk_sys) begin
 		sdram_din <= ram_din;
 
 		casex({dma, tape_req})
-			'b1X: sdram_addr <= ioctl_addr + (ioctl_index == 0 ? ROM_ADDR : ioctl_index[5:0] == 2 ? TAPE_ADDR : SNAP_ADDR);
+			'b1X: sdram_addr <= ioctl_addr + (ioctl_index == 0 ? ROM_ADDR : ioctl_index == 2 ? TAPE_ADDR : SNAP_ADDR);
 			'b01: sdram_addr <= tape_addr + TAPE_ADDR;
 			'b00: sdram_addr <= ram_addr;
 		endcase;
@@ -920,10 +922,10 @@ always @(posedge clk_sys) begin
 	old_mounted <= img_mounted[1];
 	if(~old_mounted & img_mounted[1]) begin
 	   //Only TRDs on +3
-		fdd_ready <= (!ioctl_index[7:6] & plus3) | ~plus3;
-		plusd_en  <= |ioctl_index[7:6] & ~plus3;
+		fdd_ready <= (!ioctl_ext_index & plus3) | ~plus3;
+		plusd_en  <= |ioctl_ext_index & ~plus3;
 		//DSK only for +3
-		plus3_fdd_ready <= plus3 & (ioctl_index[7:6] == 2);
+		plus3_fdd_ready <= plus3 & (ioctl_ext_index == 2);
 	end
 
 	psg_reset <= 0;
@@ -973,7 +975,7 @@ wd1793 #(1,0) fdd
 	.wp(0),
 
 	.size_code(plusd_en ? 3'd4 : 3'd1),
-	.layout(ioctl_index[7:6] == 1),
+	.layout(ioctl_ext_index == 1),
 	.side(fdd_side),
 	.ready(fdd_drive1 & fdd_ready),
 
@@ -1046,9 +1048,9 @@ smart_tape tape
 	.buff_addr(tape_addr),
 	.buff_din(ram_dout),
 
-	.ioctl_download(ioctl_download & (ioctl_index[4:0] == 2)),
+	.ioctl_download(ioctl_download & (ioctl_index == 2)),
 	.tape_size(ioctl_addr + 1'b1),
-	.tape_mode(ioctl_index[7:6]),
+	.tape_mode(ioctl_ext_index),
 
 	.m1(~nM1 & ~nMREQ),
 	.rom_en(active_48_rom),
@@ -1088,7 +1090,7 @@ reg          snap_rd_state;
 always @(posedge clk_sys) begin
 	snap_rd_old <= snap_rd;
 
-	if (ioctl_index[4:0] == 3 && old_download && ~ioctl_download) begin
+	if (ioctl_index == 3 && old_download && ~ioctl_download) begin
 		snap_dl <= 1;
 		snap_dl_addr <= 0;
 		snap_rd_state <= 0;
@@ -1099,7 +1101,9 @@ always @(posedge clk_sys) begin
 	if (snap_dl) begin
 		case (snap_rd_state)
 		0: // read RAM
-		begin
+		if (snap_dl_addr == ioctl_addr + 2'd2) begin
+			snap_dl <= 0;
+		end else begin
 			if (snap_dl_wr) snap_dl_addr <= snap_dl_addr + 1'd1;
 			if (ram_ready & ~snap_wr & ~snap_dl_wr & ~snap_dl_wait) begin
 				if (~snap_rd | ~snap_rd_old)
@@ -1115,8 +1119,6 @@ always @(posedge clk_sys) begin
 			snap_dl_wr <= 1;
 			snap_dl_data <= ram_dout;
 			snap_rd_state <= 0;
-			if (snap_dl_addr == ioctl_addr)
-				snap_dl <= 0;
 		end
 		default :;
 		endcase
@@ -1145,6 +1147,7 @@ snap_loader #(ARCH_ZX48, ARCH_ZX128, ARCH_ZX3, ARCH_P128) snap_loader
 	.ioctl_data(snap_dl_data),
 	.ioctl_wr(snap_dl_wr),
 	.ioctl_wait(snap_dl_wait),
+	.snap_sna(ioctl_ext_index[0]),
 
 	.ram_ready(ram_ready),
 
