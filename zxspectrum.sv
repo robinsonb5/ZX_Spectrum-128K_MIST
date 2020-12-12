@@ -83,8 +83,9 @@ localparam CONF_STR = {
 	"F,Z80SNA,Load Snapshot;",
 	"O89,Video timings,ULA-48,ULA-128,Pentagon;",
 	"OAC,Memory,Standard 128K,Pentagon 1024K,Profi 1024K,Standard 48K,+2A/+3;",
+	"O12,Joystick 1,Sinclair I,Sinclair II,Kempston,Cursor;",
+	"O34,Joystick 2,Sinclair I,Sinclair II,Kempston,Cursor;",
 	"O6,Fast tape load,On,Off;",
-	"O7,Joystick swap,Off,On;",
 	"OFG,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"ODE,Features,ULA+ & Timex,ULA+,Timex,None;",
 	"OHI,MMC Card,Off,divMMC,ZXMMC;",
@@ -96,7 +97,8 @@ localparam CONF_STR = {
 wire [1:0] st_ula_type    = status[9:8];
 wire [2:0] st_memory_mode = status[12:10];
 wire       st_fast_tape   = status[6];
-wire       st_joyswap     = status[7];
+wire [1:0] st_joy1        = status[2:1];
+wire [1:0] st_joy2        = status[4:3];
 wire [1:0] st_scanlines   = status[16:15];
 wire [1:0] st_mmc         = status[18:17];
 wire [1:0] st_gs_memory   = status[21:20];
@@ -191,8 +193,6 @@ wire [24:0] ps2_mouse;
 
 wire  [7:0] joystick_0;
 wire  [7:0] joystick_1;
-wire  [7:0] joy0 = st_joyswap ? joystick_1 : joystick_0; // Kempston
-wire  [7:0] joy1 = st_joyswap ? joystick_0 : joystick_1; // Sinclair
 
 wire  [1:0] buttons;
 wire  [1:0] switches;
@@ -315,13 +315,13 @@ always_comb begin
 		'b00XXXXXXXXX: cpu_din = ram_dout;
 		'b1X01XXXXXXX: cpu_din = fdd_dout;
 		'b1X001XXXXXX: cpu_din = (addr[14:13] == 2'b11 ? page_reg : page_reg_plus3);
-		'b1X0001XXXXX: cpu_din = mouse_sel ? mouse_data : {2'b00, joy0[5:0]};
+		'b1X0001XXXXX: cpu_din = mouse_sel ? mouse_data : {2'b00, joy_kempston};
 		'b1X00001XXXX: cpu_din = {page_scr_copy, 7'b1111111};
 		'b1X000001XXX: cpu_din = gs_dout;
 		'b1X0000001XX: cpu_din = (addr[14] ? sound_data : 8'hFF);
 		'b1X00000001X: cpu_din = ulap_dout;
 		'b1X000000001: cpu_din = port_ff;
-		'b1X000000000: cpu_din = {1'b1, ~tape_in, 1'b1, key_data[4:0] & ({5{addr[12]}} | ~{joy1[1:0], joy1[2], joy1[3], joy1[4]})};
+		'b1X000000000: cpu_din = {1'b1, ~tape_in, 1'b1, key_data[4:0] & joy_kbd};
 		'b1X1XXXXXXXX: cpu_din = 8'hFF;
 	endcase
 end
@@ -805,6 +805,35 @@ wire  [2:0] mod;
 wire  [4:0] key_data;
 keyboard kbd( .* );
 
+reg   [5:0] joy_kempston;
+reg   [4:0] joy_sinclair1;
+reg   [4:0] joy_sinclair2;
+reg   [4:0] joy_cursor;
+
+always @(*) begin
+	joy_kempston = 6'h0;
+	joy_sinclair1 = 5'h0;
+	joy_sinclair2 = 5'h0;
+	joy_cursor = 5'h0;
+	case (st_joy1)
+		2'b00: joy_sinclair1 |= joystick_0[4:0];
+		2'b01: joy_sinclair2 |= joystick_0[4:0];
+		2'b10: joy_kempston  |= joystick_0[5:0];
+		2'b11: joy_cursor    |= joystick_0[4:0];
+		default: ;
+	endcase
+	case (st_joy2)
+		2'b00: joy_sinclair1 |= joystick_1[4:0];
+		2'b01: joy_sinclair2 |= joystick_1[4:0];
+		2'b10: joy_kempston  |= joystick_1[5:0];
+		2'b11: joy_cursor    |= joystick_1[4:0];
+		default: ;
+	endcase
+end
+
+wire [4:0] joy_kbd = ({5{addr[12]}} | ~({joy_sinclair1[1:0], joy_sinclair1[2], joy_sinclair1[3], joy_sinclair1[4]} | {joy_cursor[2], joy_cursor[3], joy_cursor[0], 1'b0, joy_cursor[4]})) & 
+                     ({5{addr[11]}} | ~({joy_sinclair2[1:0], joy_sinclair2[2], joy_sinclair2[3], joy_sinclair2[4]} | {joy_cursor[1], 4'b0000}));
+
 reg         mouse_sel;
 wire  [7:0] mouse_data;
 mouse mouse( .*, .reset(cold_reset), .addr(addr[10:8]), .sel(), .dout(mouse_data));
@@ -813,7 +842,7 @@ always @(posedge clk_sys) begin
 	reg old_status = 0;
 	old_status <= ps2_mouse[24];
 
-	if(joy0[5:0]) mouse_sel <= 0;
+	if(joy_kempston[5:0]) mouse_sel <= 0;
 	if(old_status != ps2_mouse[24]) mouse_sel <= 1;
 end
 
