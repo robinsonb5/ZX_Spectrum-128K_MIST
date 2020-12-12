@@ -321,7 +321,7 @@ always_comb begin
 		'b1X0000001XX: cpu_din = (addr[14] ? sound_data : 8'hFF);
 		'b1X00000001X: cpu_din = ulap_dout;
 		'b1X000000001: cpu_din = port_ff;
-		'b1X000000000: cpu_din = {1'b1, ~tape_in, 1'b1, key_data[4:0] & joy_kbd};
+		'b1X000000000: cpu_din = {1'b1, ula_tape_in, 1'b1, key_data[4:0] & joy_kbd};
 		'b1X1XXXXXXXX: cpu_din = 8'hFF;
 	endcase
 end
@@ -761,6 +761,7 @@ wire  [7:0] vram_dout;
 wire  [7:0] port_ff;
 wire        ulap_sel;
 wire  [7:0] ulap_dout;
+wire        ula_tape_in;
 
 reg mZX, m128;
 always_comb begin
@@ -1104,7 +1105,8 @@ always @(posedge clk_sys) begin
 end
 
 assign UART_TX = 1;
-assign tape_in = tape_loaded_reg ? tape_vin : ~UART_RX;
+assign tape_in = ~(tape_loaded_reg ? tape_vin : UART_RX);
+assign ula_tape_in = tape_in | ear_out;
 
 //////////////////  SNAPSHOT  //////////////////
 reg          snap_dl = 0;
