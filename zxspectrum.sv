@@ -335,33 +335,40 @@ always @(posedge clk_sys) begin
 end
 
 reg  NMI;
+reg  NMI_old;
+reg  NMI_pending;
 reg  reset;
 reg  cold_reset_btn;
 reg  warm_reset_btn;
-reg  shdw_reset_btn;
 wire cold_reset = cold_reset_btn | init_reset;
 wire warm_reset = warm_reset_btn;
-wire shdw_reset = shdw_reset_btn & ~plus3;
+
 
 always @(posedge clk_sys) begin
 	reg old_F11;
 
 	old_F11 <= Fn[11];
 
-	reset <= buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset | snap_reset | Fn[10];
+	reset <= buttons[1] | status[0] | cold_reset | warm_reset | snap_reset | Fn[10];
 
 	if(reset | ~Fn[11]) NMI <= 0;
 	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
 
 	cold_reset_btn <= (mod[2:1] == 1) & Fn[11];
 	warm_reset_btn <= (mod[2:1] == 2) & Fn[11];
-	shdw_reset_btn <= (mod[2:1] == 3) & Fn[11];
 end
 
 always @(posedge clk_sys) begin
 	old_rd <= io_rd;
 	old_wr <= io_wr;
 	old_m1 <= m1;
+	NMI_old <= NMI;
+end
+
+always @(posedge clk_sys) begin
+	if (reset) NMI_pending <= 0;
+	else if (~NMI_old & NMI) NMI_pending <= 1;
+	else if (~m1 && old_m1 && (addr == 'h66)) NMI_pending <= 0;
 end
 
 //////////////////   MEMORY   //////////////////
@@ -607,7 +614,7 @@ always @(posedge clk_sys) begin
 		page_128k   <= 0;
 		page_reg[4] <= Fn[10];
 		page_reg_plus3[2] <= Fn[10];
-		shadow_rom <= shdw_reset & ~plusd_en;
+		shadow_rom <= 0;
 		if(Fn[10] && (rmod == 1)) begin
 			p1024  <= 0;
 			pf1024 <= 0;
@@ -623,7 +630,7 @@ always @(posedge clk_sys) begin
 		if(snap_hw == ARCH_ZX3) page_reg_plus3 <= snap_1ffd;
 	end else begin
 		if(m1 && ~old_m1 && addr[15:14]) shadow_rom <= 0;
-		if(m1 && ~old_m1 && ~plusd_en && ~mod[0] && (addr == 'h66) && ~plus3) shadow_rom <= 1; 
+		if(m1 && ~old_m1 && ~plusd_en && ~mod[0] && NMI_pending && (addr == 'h66) && ~plus3) shadow_rom <= 1;
 
 		if(io_wr & ~old_wr) begin
 			if(page_write) begin
@@ -866,7 +873,7 @@ always @(posedge clk_sys) begin
 		if(mf128_port) mf128_en <= addr[7] & mf128_en;
 	end
 
-	if(~old_m1 & m1 & mod[0] & (addr == 'h66)) {mf128_mem, mf128_en} <= 2'b11;
+	if(~old_m1 & m1 & mod[0] & NMI_pending & (addr == 'h66)) {mf128_mem, mf128_en} <= 2'b11;
 end
 
 //////////////////   MMC   //////////////////
@@ -965,7 +972,7 @@ always @(posedge clk_sys) begin
 		if(~old_wr & io_wr  & (addr[7:0] == 'hEF) & plusd_ena) {fdd_side, fdd_drive1} <= {cpu_dout[7], cpu_dout[1:0] != 2};
 		if(~old_wr & io_wr  & (addr[7:0] == 'hE7)) plusd_mem <= 0;
 		if(~old_rd & io_rd  & (addr[7:0] == 'hE7) & ~plusd_stealth) plusd_mem <= 1;
-		if(~old_m1 & m1 & ((addr == 'h08) | (addr == 'h3A) | (~mod[0] & (addr == 'h66)))) {psg_reset,plusd_mem} <= {(addr == 'h66), 1'b1};
+		if(~old_m1 & m1 & ((addr == 'h08) | (addr == 'h3A) | (~mod[0] & NMI_pending & (addr == 'h66)))) {psg_reset,plusd_mem} <= {(addr == 'h66), 1'b1};
 	end else begin
 		plusd_mem <= 0;
 		if(~old_wr & io_wr & fdd_sel & addr[7]) {fdd_side, fdd_reset, fdd_drive1} <= {~cpu_dout[4], ~cpu_dout[2], !cpu_dout[1:0]};
