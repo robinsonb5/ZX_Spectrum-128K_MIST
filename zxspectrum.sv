@@ -340,22 +340,27 @@ reg  NMI_pending;
 reg  reset;
 reg  cold_reset_btn;
 reg  warm_reset_btn;
+reg  shdw_reset_btn;
+reg  auto_reset_btn;
 wire cold_reset = cold_reset_btn | init_reset;
 wire warm_reset = warm_reset_btn;
-
+wire shdw_reset = shdw_reset_btn & ~plus3;
+wire auto_reset = auto_reset_btn;
 
 always @(posedge clk_sys) begin
 	reg old_F11;
 
 	old_F11 <= Fn[11];
 
-	reset <= buttons[1] | status[0] | cold_reset | warm_reset | snap_reset | Fn[10];
+	reset <= buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset | snap_reset | auto_reset;
 
 	if(reset | ~Fn[11]) NMI <= 0;
 	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
 
 	cold_reset_btn <= (mod[2:1] == 1) & Fn[11];
 	warm_reset_btn <= (mod[2:1] == 2) & Fn[11];
+	shdw_reset_btn <= (mod[2:1] == 3) & Fn[11];
+	auto_reset_btn <= Fn[10];
 end
 
 always @(posedge clk_sys) begin
@@ -599,9 +604,15 @@ always_comb begin
 	endcase
 end
 
+reg  shdw_reset_r;
+reg  auto_reset_r;
+
 always @(posedge clk_sys) begin
 	reg old_reset;
 	reg [2:0] rmod;
+
+	shdw_reset_r <= shdw_reset;
+	auto_reset_r <= auto_reset;
 
 	old_reset <= reset;
 	if(~old_reset & reset) rmod <= mod;
@@ -612,10 +623,10 @@ always @(posedge clk_sys) begin
 		page_reg_plus3 <= 0; 
 		page_reg_p1024 <= 0;
 		page_128k   <= 0;
-		page_reg[4] <= Fn[10];
-		page_reg_plus3[2] <= Fn[10];
-		shadow_rom <= 0;
-		if(Fn[10] && (rmod == 1)) begin
+		page_reg[4] <= auto_reset_r;
+		page_reg_plus3[2] <= auto_reset_r;
+		shadow_rom <= shdw_reset_r & ~plusd_en;
+		if(auto_reset_r && (rmod == 1)) begin
 			p1024  <= 0;
 			pf1024 <= 0;
 			zx48   <= ~plus3;
@@ -1066,7 +1077,7 @@ wire        tape_vin;
 smart_tape tape
 (
 	.*,
-	.reset(reset & ~Fn[10]),
+	.reset(reset & ~auto_reset_r),
 	.ce(ce_tape),
 
 	.turbo(tape_turbo),
