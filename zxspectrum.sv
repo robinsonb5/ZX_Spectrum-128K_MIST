@@ -320,9 +320,8 @@ always_comb begin
 		'b1X000001XXX: cpu_din = gs_dout;
 		'b1X0000001XX: cpu_din = (addr[14] ? sound_data : 8'hFF);
 		'b1X00000001X: cpu_din = ulap_dout;
-		'b1X000000001: cpu_din = port_ff;
 		'b1X000000000: cpu_din = {1'b1, ula_tape_in, 1'b1, key_data[4:0] & joy_kbd};
-		'b1X1XXXXXXXX: cpu_din = 8'hFF;
+		default: cpu_din = port_ff;
 	endcase
 end
 
