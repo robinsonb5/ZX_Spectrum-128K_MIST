@@ -78,7 +78,7 @@ localparam ARCH_P1024 = 5'b001_10; // Pentagon 1024
 `include "build_id.v"
 localparam CONF_STR = {
 	"SPECTRUM;;",
-	"S1,TRDIMGDSKMGT,Load Disk;",
+	"S1U,TRDIMGDSKMGT,Load Disk;",
 	"F,TAPCSWTZX,Load Tape;",
 	"F,Z80SNA,Load Snapshot;",
 	"O89,Video timings,ULA-48,ULA-128,Pentagon;",
@@ -922,7 +922,9 @@ sd_card sd_card
 );
 
 ///////////////////   FDC   ///////////////////
-reg         plusd_en;
+reg         plusd_mounted;
+reg         trd_mounted;
+wire        plusd_en = plusd_mounted & ~plus3;
 reg         plusd_mem;
 wire        plusd_ena = plusd_stealth ? plusd_mem : plusd_en;
 wire        fdd_sel2 = plusd_ena & &addr[7:5] & ~addr[2] & &addr[1:0];
@@ -930,7 +932,7 @@ wire        fdd_sel2 = plusd_ena & &addr[7:5] & ~addr[2] & &addr[1:0];
 reg         trdos_en;
 wire  [7:0] wd_dout;
 wire        fdd_rd;
-reg         fdd_ready;
+wire        fdd_ready = (plusd_mounted & ~plus3) | trd_mounted;
 reg         fdd_drive1;
 reg         fdd_side;
 reg         fdd_reset;
@@ -963,16 +965,13 @@ wire        portBF = mf128_port & addr[7] & (mf128_mem | plusd_mem);
 always @(posedge clk_sys) begin
 	reg old_mounted;
 
-	if(cold_reset) {plus3_fdd_ready, fdd_ready, plusd_en} <= 0;
 	if(reset)      {plusd_mem, trdos_en} <= 0;
 
 	old_mounted <= img_mounted[1];
-	if(~old_mounted & img_mounted[1]) begin
-	   //Only TRDs on +3
-		fdd_ready <= (!ioctl_ext_index & plus3) | ~plus3;
-		plusd_en  <= |ioctl_ext_index & ~plus3;
-		//DSK only for +3
-		plus3_fdd_ready <= plus3 & (ioctl_ext_index == 2);
+	if(~old_mounted & img_mounted[1])	begin
+		plus3_fdd_ready <= ioctl_ext_index == 2 & |img_size;
+		trd_mounted     <= ioctl_ext_index == 0 & |img_size;
+		plusd_mounted   <= (ioctl_ext_index == 1 | ioctl_ext_index == 3) & |img_size;
 	end
 
 	psg_reset <= 0;
