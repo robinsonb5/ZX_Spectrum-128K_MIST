@@ -339,11 +339,9 @@ reg  NMI_pending;
 reg  reset;
 reg  cold_reset_btn;
 reg  warm_reset_btn;
-reg  shdw_reset_btn;
 reg  auto_reset_btn;
 wire cold_reset = cold_reset_btn | init_reset;
 wire warm_reset = warm_reset_btn;
-wire shdw_reset = shdw_reset_btn & ~plus3;
 wire auto_reset = auto_reset_btn;
 
 always @(posedge clk_sys) begin
@@ -351,14 +349,13 @@ always @(posedge clk_sys) begin
 
 	old_F11 <= Fn[11];
 
-	reset <= buttons[1] | status[0] | cold_reset | warm_reset | shdw_reset | snap_reset | auto_reset;
+	reset <= buttons[1] | status[0] | cold_reset | warm_reset | snap_reset | auto_reset;
 
 	if(reset | ~Fn[11]) NMI <= 0;
 	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
 
 	cold_reset_btn <= (mod[2:1] == 1) & Fn[11];
 	warm_reset_btn <= (mod[2:1] == 2) & Fn[11];
-	shdw_reset_btn <= (mod[2:1] == 3) & Fn[11];
 	auto_reset_btn <= Fn[10];
 end
 
@@ -554,7 +551,6 @@ vram vram
 (* maxfan = 10 *) reg	pf1024;
 (* maxfan = 10 *) reg	plus3;
 reg        page_scr_copy;
-reg        shadow_rom;
 reg  [7:0] page_reg;
 reg  [7:0] page_reg_plus3;
 reg  [7:0] page_reg_p1024;
@@ -593,7 +589,7 @@ always @(posedge clk_sys) begin
 end
 
 always_comb begin
-	casex({shadow_rom, trdos_en, plusd_mem, mf128_mem, plus3})
+	casex({1'b0, trdos_en, plusd_mem, mf128_mem, plus3})
 		'b1XXXX: page_rom <= 4'b0100; //shadow
 		'b01XXX: page_rom <= 4'b0101; //trdos
 		'b001XX: page_rom <= 4'b1100; //plusd
@@ -603,14 +599,12 @@ always_comb begin
 	endcase
 end
 
-reg  shdw_reset_r;
 reg  auto_reset_r;
 
 always @(posedge clk_sys) begin
 	reg old_reset;
 	reg [2:0] rmod;
 
-	shdw_reset_r <= shdw_reset;
 	auto_reset_r <= auto_reset;
 
 	old_reset <= reset;
@@ -624,7 +618,6 @@ always @(posedge clk_sys) begin
 		page_128k   <= 0;
 		page_reg[4] <= auto_reset_r;
 		page_reg_plus3[2] <= auto_reset_r;
-		shadow_rom <= shdw_reset_r & ~plusd_en;
 		if(auto_reset_r && (rmod == 1)) begin
 			p1024  <= 0;
 			pf1024 <= 0;
@@ -639,8 +632,6 @@ always @(posedge clk_sys) begin
 		if((snap_hw == ARCH_ZX128) || (snap_hw == ARCH_P128) || (snap_hw == ARCH_ZX3)) page_reg <= snap_7ffd;
 		if(snap_hw == ARCH_ZX3) page_reg_plus3 <= snap_1ffd;
 	end else begin
-		if(m1 && ~old_m1 && addr[15:14]) shadow_rom <= 0;
-		if(m1 && ~old_m1 && ~plusd_en && ~mod[0] && NMI_pending && (addr == 'h66) && ~plus3) shadow_rom <= 1;
 
 		if(io_wr & ~old_wr) begin
 			if(page_write) begin

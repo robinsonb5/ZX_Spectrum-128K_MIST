@@ -106,9 +106,8 @@ The format is: Boot (GLUK) + TRDOS + 128 ROM0 + 128 ROM1 + +3 ROM0/1/2/3 + PlusD
 
 ### Special Keys:
 - Ctrl+F11 - warm reset
-- Alt+F11 - cold reset will disk unload
-- Ctrl+Alt+F11 - reset to ROM0 menu
-- F11 - enter +D snapshot menu (or ROM0 menu if IMG/MGT not mounted)
+- Alt+F11 - cold reset
+- F11 - enter +D snapshot menu (if IMG/MGT is mounted)
 - RShift+F11 - enter Multiface 128 menu
 - F12 - OSD menu
 
