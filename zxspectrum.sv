@@ -346,18 +346,18 @@ wire warm_reset = warm_reset_btn;
 wire auto_reset = auto_reset_btn;
 
 always @(posedge clk_sys) begin
-	reg old_F11;
+	reg old_F10;
 
-	old_F11 <= Fn[11];
+	old_F10 <= Fn[10];
 
 	reset <= buttons[1] | status[0] | cold_reset | warm_reset | snap_reset | auto_reset;
 
-	if(reset | ~Fn[11]) NMI <= 0;
-	else if(~old_F11 & Fn[11] & (mod[2:1] == 0)) NMI <= 1;
+	if(reset | ~Fn[10]) NMI <= 0;
+	else if(~old_F10 & Fn[10] & (mod[2:1] == 0)) NMI <= 1;
 
-	cold_reset_btn <= (mod[2:1] == 1) & Fn[11];
-	warm_reset_btn <= (mod[2:1] == 2) & Fn[11];
-	auto_reset_btn <= Fn[10];
+	warm_reset_btn <= (mod[2:1] == 0) & Fn[11];
+	cold_reset_btn <= (mod[2:1] == 1) & Fn[11]; // alt+F11
+	auto_reset_btn <= (mod[2:1] == 2) & Fn[11]; // ctrl+F11
 end
 
 always @(posedge clk_sys) begin
