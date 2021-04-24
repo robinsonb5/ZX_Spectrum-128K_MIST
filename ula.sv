@@ -158,7 +158,7 @@ always @(posedge clk_sys) begin
 		end
 
 		if( mZX && (vc_next == 248) && (hc_next == (m128 ? 8 : 4))) INT <= 1;
-		if(!mZX && (vc_next == 239) && (hc_next == 326)) INT <= 1;
+		if(!mZX && (vc_next == 239) && (hc_next == 324)) INT <= 1;
 
 		if(INT)  INTCnt <= ((m128 && INTCnt == 71) || (~m128 && INTCnt == 63)) ? 7'd0 : (INTCnt + 1'd1);
 		if(INTCnt == 0) INT <= 0;
@@ -173,7 +173,7 @@ always @(posedge clk_sys) begin
 		end
 
 		//1T update for border in Pentagon mode
-		if(!mZX & ((hc_next<12) | (hc_next>267) | (vc>=192))) AttrOut <= tmx_hi ? hiattr : {2'b00,border_color,border_color};
+		if(!mZX & !hc_next[0] & ((hc_next<12) | (hc_next>267) | (vc>=192))) AttrOut <= tmx_hi ? hiattr : {2'b00,border_color,border_color};
 
 		if(hc_next[3]) VidEN <= ~Border;
 	
