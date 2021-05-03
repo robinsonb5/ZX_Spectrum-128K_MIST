@@ -82,8 +82,8 @@ module ULA
 assign vram_addr = vaddr;
 assign nINT      = ~INT;
 assign port_ff   = tmx_using_ff ? {2'b00, tmx_cfg} : mZX ? ff_data : 8'hFF;
-assign nPortRD   = addr[0] | nIORQ | ioreqtw3 | nRD;
-assign nPortWR   = addr[0] | nIORQ | ioreqtw3 | nWR;
+assign nPortRD   = addr[0] | nIORQ | (mZX & ioreqtw3) | nRD;
+assign nPortWR   = addr[0] | nIORQ | (mZX & ioreqtw3) | nWR;
 
 // Pixel clock
 reg  [8:0] hc = 0;
@@ -158,7 +158,7 @@ always @(posedge clk_sys) begin
 		end
 
 		if( mZX && (vc_next == 248) && (hc_next == (m128 ? 8 : 4))) INT <= 1;
-		if(!mZX && (vc_next == 239) && (hc_next == 324)) INT <= 1;
+		if(!mZX && (vc_next == 239) && (hc_next == 326)) INT <= 1;
 
 		if(INT)  INTCnt <= ((m128 && INTCnt == 71) || (~m128 && INTCnt == 63)) ? 7'd0 : (INTCnt + 1'd1);
 		if(INTCnt == 0) INT <= 0;
