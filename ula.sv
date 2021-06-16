@@ -39,7 +39,6 @@ module ULA
 	input   [7:0] din,
 	input         nMREQ,
 	input         nIORQ,
-	input         nRFSH,
 	input         nRD,
 	input         nWR,
 	output        nINT,
@@ -179,18 +178,18 @@ always @(posedge clk_sys) begin
 	
 		if(!Border_next) begin
 			casez({tmx_cfg[1],hc_next[3:0]})
-				5'b01000,
-				5'b01100: vaddr <= {stdpage ? page_scr : tmx_cfg[2],tmx_cfg[0],vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
-				5'b11000,
-				5'b11100: vaddr <= {stdpage ? page_scr : tmx_cfg[0],1'b0,vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
-				5'b?1001,
-				5'b?1101: begin bits <= vram_dout; ff_data <= vram_dout; end
-				5'b01010,
-				5'b01110: vaddr <= {stdpage ? page_scr : tmx_cfg[2],tmx_cfg[0],3'b110,vc[7:3],hc_next[7:4],hc_next[2]};
-				5'b11010,
-				5'b11110: vaddr <= {stdpage ? page_scr : tmx_cfg[0],1'b1,vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
-				5'b?1011,
-				5'b?1111: begin attr <= vram_dout; ff_data <= vram_dout; end
+				5'b0_1000,
+				5'b0_1100: vaddr <= {stdpage ? page_scr : tmx_cfg[2],tmx_cfg[0],vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
+				5'b1_1000,
+				5'b1_1100: vaddr <= {stdpage ? page_scr : tmx_cfg[0],1'b0,vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
+				5'b?_1001,
+				5'b?_1101: begin bits <= vram_dout; ff_data <= vram_dout; end
+				5'b0_1010,
+				5'b0_1110: vaddr <= {stdpage ? page_scr : tmx_cfg[2],tmx_cfg[0],3'b110,vc[7:3],hc_next[7:4],hc_next[2]};
+				5'b1_1010,
+				5'b1_1110: vaddr <= {stdpage ? page_scr : tmx_cfg[0],1'b1,vc[7:6],vc[2:0],vc[5:3],hc_next[7:4], hc_next[2]};
+				5'b?_1011,
+				5'b?_1111: begin attr <= vram_dout; ff_data <= vram_dout; end
 				default: ;
 			endcase
 

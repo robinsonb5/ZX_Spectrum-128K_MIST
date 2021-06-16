@@ -90,6 +90,8 @@ localparam CONF_STR = {
 	"ODE,Features,ULA+ & Timex,ULA+,Timex,None;",
 	"OHI,MMC Card,Off,divMMC,ZXMMC,divMMC+ESXDOS;",
 	"OKL,General Sound,512KB,1MB,2MB,Disabled;",
+	"O5,Keyboard,Issue 3,Issue 2;",
+	"O7,Snowing,Enabled,Unrained;",
 	"T0,Reset;",
 	"V,v3.40.",`BUILD_DATE
 };
@@ -102,6 +104,8 @@ wire [1:0] st_joy2        = status[4:3];
 wire [1:0] st_scanlines   = status[16:15];
 wire [1:0] st_mmc         = status[18:17];
 wire [1:0] st_gs_memory   = status[21:20];
+wire       issue2         = status[5];
+wire       unrainer       = status[7];
 
 ////////////////////   CLOCKS   ///////////////////
 wire clk_sys;
@@ -788,7 +792,7 @@ wire       HSync, VSync, HBlank;
 wire       ulap_ena, ulap_mono, mode512;
 wire       ulap_avail = ~status[14] & ~trdos_en;
 wire       tmx_avail = ~status[13] & ~trdos_en;
-wire       snow_ena = &turbo & ~plus3;
+wire       snow_ena = &turbo & ~plus3 & ~unrainer;
 wire       ula_nWR;
 
 ULA ULA(.*, .nPortRD(), .nPortWR(ula_nWR), .din(cpu_dout), .page_ram(page_ram[2:0]));
@@ -1124,7 +1128,7 @@ end
 
 assign UART_TX = 1;
 assign tape_in = ~(tape_loaded_reg ? tape_vin : UART_RX);
-assign ula_tape_in = tape_in | ear_out;
+assign ula_tape_in = tape_in | ear_out | (issue2 & !tape_active & mic_out);
 
 //////////////////  SNAPSHOT  //////////////////
 reg          snap_dl = 0;
