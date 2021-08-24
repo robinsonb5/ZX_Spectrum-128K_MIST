@@ -69,8 +69,8 @@ always @(posedge clk_sys) begin
 		if(old_status != ps2_mouse[24]) begin
 			if(!swap) swap <= ps2_mouse[1:0];
 			{mbutton,button} <= ps2_mouse[2:0];
-			dx <= |newdx[11:8] ? {8{~ps2_mouse[4]}} : newdx;
-			dy <= |newdy[11:8] ? {8{~ps2_mouse[5]}} : newdy;
+			dx <= newdx;
+			dy <= newdy;
 		end
 	end
 end
