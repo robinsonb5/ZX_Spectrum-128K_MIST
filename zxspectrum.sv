@@ -847,7 +847,7 @@ always @(*) begin
 end
 
 wire [4:0] joy_kbd = ({5{addr[12]}} | ~({joy_sinclair1[1:0], joy_sinclair1[2], joy_sinclair1[3], joy_sinclair1[4]} | {joy_cursor[2], joy_cursor[3], joy_cursor[0], 1'b0, joy_cursor[4]})) & 
-                     ({5{addr[11]}} | ~({joy_sinclair2[1:0], joy_sinclair2[2], joy_sinclair2[3], joy_sinclair2[4]} | {joy_cursor[1], 4'b0000}));
+                     ({5{addr[11]}} | ~({joy_sinclair2[4:2], joy_sinclair2[0], joy_sinclair2[1]} | {joy_cursor[1], 4'b0000}));
 
 reg         mouse_sel;
 wire  [7:0] mouse_data;
