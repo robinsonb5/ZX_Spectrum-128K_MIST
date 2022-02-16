@@ -59,6 +59,8 @@ module zxspectrum
 );
 `default_nettype none
 
+`define DISABLE_HQ2X
+
 assign LED = ~(ioctl_download | tape_led);
 
 localparam CONF_BDI   = "(BDI)";
@@ -78,6 +80,26 @@ localparam ARCH_P1024 = 5'b001_10; // Pentagon 1024
 `include "build_id.v"
 localparam CONF_STR = {
 	"SPECTRUM;;",
+`ifdef DEMISTIFY
+	"S1U,TRDIMGDSKMGT,Load Disk;",
+	"F,TAPCSWTZX,Load Tape;",
+	"F,Z80SNA,Load Snapshot;",
+	"O6,Fast tape load,On,Off;",
+	"O12,Joystick 1,Sinclair I,Sinclair II,Kempston,Cursor;",
+	"O34,Joystick 2,Sinclair I,Sinclair II,Kempston,Cursor;",
+	"P1,System;",
+	"P1OAC,Memory,Standard 128K,Pentagon 1024K,Profi 1024K,Standard 48K,+2A/+3;",
+	"P1ODE,Features,ULA+ & Timex,ULA+,Timex,None;",
+	"P1OKL,General Sound,512KB,1MB,2MB,Disabled;",
+	"P1O5,Keyboard,Issue 3,Issue 2;",
+	"P2,Video;",
+	"P2OFG,Scandoubler Fx,None,None,CRT 25%,CRT 50%;",
+	"P2O89,Video timings,ULA-48,ULA-128,Pentagon;",
+	"P2O7,Snowing,Enabled,Unrained;",
+//	"P3,VHD File;",
+//	"P3OHI,VHD File,Off,divMMC,ZXMMC,divMMC+ESXDOS;",
+//	"P3S0U,VHD,Select VHD File;",
+`else
 	"S1U,TRDIMGDSKMGT,Load Disk;",
 	"F,TAPCSWTZX,Load Tape;",
 	"F,Z80SNA,Load Snapshot;",
@@ -92,6 +114,7 @@ localparam CONF_STR = {
 	"OKL,General Sound,512KB,1MB,2MB,Disabled;",
 	"O5,Keyboard,Issue 3,Issue 2;",
 	"O7,Snowing,Enabled,Unrained;",
+`endif
 	"T0,Reset;",
 	"V,v3.40.",`BUILD_DATE
 };
@@ -821,6 +844,50 @@ wire       ula_nWR;
 
 ULA ULA(.*, .nPortRD(), .nPortWR(ula_nWR), .din(cpu_dout), .page_ram(page_ram[2:0]));
 
+`ifdef DISABLE_HQ2X
+
+// Use the more compact video pipeline from mist-modules for TC64
+// FIXME - take care of monochrome mode for ULA+ emulation
+
+mist_video #(.SD_HCNT_WIDTH(11),.COLOR_DEPTH(3)) video
+(
+	// master clock
+	// it should be 4x (or 2x) pixel clock for the scandoubler
+	.clk_sys(clk_sys),
+
+	// OSD SPI interface
+	.SPI_SCK(SPI_SCK),
+	.SPI_SS3(SPI_SS3),
+	.SPI_DI(SPI_DI),
+
+	// scanlines (00-none 01-25% 10-50% 11-75%)
+	.scanlines(scandoubler_disable ? 2'b00 : {scale==3, scale==2}),
+
+	// non-scandoubled pixel clock divider 0 - clk_sys/4, 1 - clk_sys/2
+	.ce_divider(1'b0),
+
+	.scandoubler_disable(scandoubler_disable),
+	// YPbPr always uses composite sync
+	.ypbpr(1'b0),
+
+	// video in
+	.R(Rx),
+	.G(Gx),
+	.B(Bx),
+
+	.HSync(HSync),
+	.VSync(VSync),
+
+	.VGA_R(VGA_R),
+	.VGA_G(VGA_G),
+	.VGA_B(VGA_B),
+	.VGA_VS(VGA_VS),
+	.VGA_HS(VGA_HS)
+);
+
+
+`else
+
 video_mixer #(.LINE_LENGTH(896), .HALF_DEPTH(1)) video_mixer
 (
 	.*,
@@ -837,6 +904,7 @@ video_mixer #(.LINE_LENGTH(896), .HALF_DEPTH(1)) video_mixer
 	.B(Bx),
 	.mono(ulap_ena & ulap_mono)
 );
+`endif
 
 ////////////////////   HID   ////////////////////
 wire [11:1] Fn;
