@@ -433,6 +433,9 @@ always@(posedge clk_sys) begin
                         reply3 <= OCR[7:0];
                         reply_len <= 4'd4;
                     end
+
+                    // CMD59: CRC_ON_OFF
+                    'h7b: reply <= 0;    // ok
                     endcase
                 end
             end
