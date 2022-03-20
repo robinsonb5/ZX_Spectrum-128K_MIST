@@ -172,11 +172,26 @@ always @(*) begin
 	endcase
 end
 
+
+// pixel clock divider
+reg [3:0] i_div;
+always @(posedge clk_sys) begin
+	reg last_hsync;
+	last_hsync <= HSync;
+	if(last_hsync & !HSync) begin
+		i_div <= 4'd0;
+	end else begin
+		i_div <= i_div + 4'd1;
+	end
+end
+
+wire osd_pix_ce = scandoubler_disable? i_div == 4'b0001 : i_div[2:0] == 3'b001;
+
 wire [5:0] red, green, blue;
-osd #(OSD_X_OFFSET, OSD_Y_OFFSET, OSD_COLOR) osd
+osd #(OSD_X_OFFSET, OSD_Y_OFFSET, OSD_COLOR, 1'b0) osd
 (
 	.*,
-	.ce(0),
+	.ce(osd_pix_ce),
 	.rotate(0),
 
 	.R_in(r_out),
