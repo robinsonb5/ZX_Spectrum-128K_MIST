@@ -230,7 +230,7 @@ wire [7:0] color = palette[(tmx_hi ? hiSRegister[15] : SRegister[7]) ? {AttrOut[
 
 always_comb casez({HBlank | VSync, ulap_ena})
 	'b1?: {Gx,Rx,Bx} = 0;
-	'b00: {Gx,Rx,Bx} = {{G, I & G, I & G}, {R, I & R, I & R}, {B, I & B, I & B}};
+	'b00: {Gx,Rx,Bx} = {{G, I & G, G}, {R, I & R, R}, {B, I & B, B}};
 	'b01: {Gx,Rx,Bx} = {color, color[1]};
 endcase
 
