@@ -749,12 +749,36 @@ gs #(.INT_DIV(373)) gs
 	.OUTR(gs_r)
 );
 
+// Covox/SounDrive
+reg [7:0] sd_l0, sd_l1, sd_r0, sd_r1;
+
+wire covox_cs = ~nIORQ & ~nWR & nM1 && addr[7:0] == 8'hFB;
+wire soundrive_a_cs = ~nIORQ & ~nWR & nM1 && addr[7:0] == 8'h0F;
+wire soundrive_b_cs = ~nIORQ & ~nWR & nM1 && addr[7:0] == 8'h1F;
+wire soundrive_c_cs = ~nIORQ & ~nWR & nM1 && addr[7:0] == 8'h4F;
+wire soundrive_d_cs = ~nIORQ & ~nWR & nM1 && addr[7:0] == 8'h5F;
+
+always @(posedge clk_sys) begin
+    if (reset) begin
+        sd_l0 <= 8'h0;
+        sd_l1 <= 8'h0;
+        sd_r0 <= 8'h0;
+        sd_r1 <= 8'h0;
+    end
+    else begin
+        if (covox_cs || soundrive_a_cs) sd_l0 <= cpu_dout;
+        if (covox_cs || soundrive_b_cs) sd_l1 <= cpu_dout;
+        if (covox_cs || soundrive_c_cs) sd_r0 <= cpu_dout;
+        if (covox_cs || soundrive_d_cs) sd_r1 <= cpu_dout;
+    end
+end
+
 // Final audio signal mixing
 sigma_delta_dac #(14) dac_l
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({~gs_l[14], gs_l[13:0]} + {1'b0, psg_left, 3'b000} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
+	.DACin({~gs_l[14], gs_l[13:0]} + {1'd0, psg_left, 3'd0} + {2'd0, sd_l0, 4'd0} + {2'd0, sd_l1, 4'd0} + {2'd0, ear_out, mic_out, tape_in, 10'd0}),
 	.DACout(AUDIO_L)
 );
 
@@ -762,7 +786,7 @@ sigma_delta_dac #(14) dac_r
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({~gs_r[14], gs_r[13:0]} + {1'b0, psg_right, 3'b000} + {2'b00, ear_out, mic_out, tape_in, 10'd0}),
+	.DACin({~gs_r[14], gs_r[13:0]} + {1'd0, psg_right, 3'd0} + {2'd0, sd_r0, 4'd0} + {2'd0, sd_r1, 4'd0} + {2'd0, ear_out, mic_out, tape_in, 10'd0}),
 	.DACout(AUDIO_R)
 );
 
