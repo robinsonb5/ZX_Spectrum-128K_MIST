@@ -44,7 +44,7 @@ module zxspectrum
    input         SPI_SS2,
    input         SPI_SS3,
    input         CONF_DATA0,
-
+   
    output [12:0] SDRAM_A,
    inout  [15:0] SDRAM_DQ,
    output        SDRAM_DQML,
@@ -134,12 +134,27 @@ wire       unrainer       = status[7];
 wire clk_sys;
 wire locked;
 
+wire guest_pll_clk_out1;
+
 pll pll
 (
 	.inclk0(CLOCK_27),
 	.c0(clk_sys),
-	.c1(SDRAM_CLK),
+	.c1(guest_pll_clk_out1),
 	.locked(locked)
+);
+
+altddio_out #(
+    .width(1)
+) sdram_clk_driver (
+    .datain_h(1'b1),                           // Keep line High on rising edge
+    .datain_l(1'b0),                           // Keep line Low on falling edge
+    .outclock(guest_pll_clk_out1),             // Connect your internal PLL clk[1] line here
+    .dataout(SDRAM_CLK),                       // Driven directly to PIN_L14
+    .aclr(1'b0),
+    .aset(1'b0),
+    .oe(1'b1),
+    .outclocken(1'b1)
 );
 
 reg  ce_psg;  //1.75MHz
